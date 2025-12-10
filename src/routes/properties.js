@@ -138,4 +138,25 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Delete property (authenticated)
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const properties = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
+    if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
+
+    const property = properties[0];
+
+    // Check ownership or admin
+    if (property.owner_email !== req.user.email && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await run('DELETE FROM properties WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete property error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
