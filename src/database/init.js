@@ -1,104 +1,72 @@
-import sqlite3 from 'sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import pkg from 'pg';
 import bcrypt from 'bcryptjs';
+const { Pool } = pkg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-const dbPath = path.join(__dirname, '../../database.sqlite');
-
-let db;
-
-export const getDatabase = () => {
-  if (!db) {
-    db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error('Error opening database:', err);
-      } else {
-        console.log('Connected to SQLite database');
-      }
-    });
-  }
-  return db;
+export const query = async (text, params = []) => {
+  const res = await pool.query(text, params);
+  return res.rows;
 };
 
-export const query = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase();
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+export const run = async (text, params = []) => {
+  return pool.query(text, params);
 };
 
-export const run = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase();
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
-};
-
-export const initDatabase = () => {
-  const db = getDatabase();
-  
+export const initDatabase = async () => {
   // Users table
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    first_name TEXT,
-    last_name TEXT,
-    role TEXT DEFAULT 'user',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+  await run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      role TEXT DEFAULT 'user',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 
   // Properties table
-  db.run(`CREATE TABLE IF NOT EXISTS properties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    location TEXT,
-    price_per_night REAL,
-    capacity INTEGER,
-    cover_image TEXT,
-    images TEXT,
-    amenities TEXT,
-    owner_email TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+  await run(`
+    CREATE TABLE IF NOT EXISTS properties (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      location TEXT,
+      price_per_night REAL,
+      capacity INTEGER,
+      cover_image TEXT,
+      images TEXT[],
+      amenities TEXT,
+      owner_email TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 
   // Availability table
-  db.run(`CREATE TABLE IF NOT EXISTS availability (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_id INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    reason TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(property_id, date),
-    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-  )`);
+  await run(`
+    CREATE TABLE IF NOT EXISTS availability (
+      id SERIAL PRIMARY KEY,
+      property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      date DATE NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(property_id, date)
+    );
+  `);
 
-  // Create default admin user (email: admin@example.com, password: admin123)
-  // Generate hash asynchronously
-  bcrypt.hash('admin123', 10).then(hash => {
-    db.run(`INSERT OR IGNORE INTO users (email, password, first_name, role) 
-      VALUES ('admin@example.com', ?, 'Admin', 'admin')`, [hash], (err) => {
-      if (err) {
-        console.error('Error creating default user:', err);
-      } else {
-        console.log('Default admin user created (admin@example.com / admin123)');
-      }
-    });
-  }).catch(err => {
-    console.error('Error hashing password:', err);
-  });
+  // Default admin user
+  const hashed = await bcrypt.hash('admin123', 10);
+  await run(`
+    INSERT INTO users (email, password, first_name, role)
+    VALUES ('admin@example.com', $1, 'Admin', 'admin')
+    ON CONFLICT (email) DO NOTHING;
+  `, [hashed]);
 
-  console.log('Database initialized');
+  console.log('PostgreSQL database initialized');
 };
-

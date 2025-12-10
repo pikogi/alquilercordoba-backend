@@ -9,9 +9,10 @@ router.get('/', async (req, res) => {
   try {
     let sql = 'SELECT * FROM availability';
     const params = [];
-    
+    let i = 1;
+
     if (req.query.property_id) {
-      sql += ' WHERE property_id = ?';
+      sql += ` WHERE property_id = $${i++}`;
       params.push(req.query.property_id);
     }
 
@@ -25,7 +26,7 @@ router.get('/', async (req, res) => {
 
     // Limit support
     if (req.query.limit) {
-      sql += ' LIMIT ?';
+      sql += ` LIMIT $${i++}`;
       params.push(parseInt(req.query.limit));
     }
 
@@ -42,13 +43,14 @@ router.get('/filter', async (req, res) => {
   try {
     let sql = 'SELECT * FROM availability WHERE 1=1';
     const params = [];
+    let i = 1;
 
     if (req.query.property_id) {
-      sql += ' AND property_id = ?';
+      sql += ` AND property_id = $${i++}`;
       params.push(req.query.property_id);
     }
     if (req.query.date) {
-      sql += ' AND date = ?';
+      sql += ` AND date = $${i++}`;
       params.push(req.query.date);
     }
 
@@ -64,29 +66,23 @@ router.get('/filter', async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { property_id, date, reason } = req.body;
-
-    if (!property_id || !date) {
-      return res.status(400).json({ error: 'property_id and date required' });
-    }
+    if (!property_id || !date) return res.status(400).json({ error: 'property_id and date required' });
 
     // Verify ownership
-    const properties = await query('SELECT owner_email FROM properties WHERE id = ?', [property_id]);
-    if (properties.length === 0) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
+    const properties = await query('SELECT owner_email FROM properties WHERE id = $1', [property_id]);
+    if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
     if (properties[0].owner_email !== req.user.email && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     const result = await run(
-      'INSERT INTO availability (property_id, date, reason) VALUES (?, ?, ?)',
+      'INSERT INTO availability (property_id, date, reason) VALUES ($1, $2, $3) RETURNING *',
       [property_id, date, reason || null]
     );
 
-    const newAvailability = await query('SELECT * FROM availability WHERE id = ?', [result.lastID]);
-    res.status(201).json(newAvailability[0]);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    if (error.message && error.message.includes('UNIQUE constraint')) {
+    if (error.message && error.message.includes('duplicate key value')) {
       return res.status(400).json({ error: 'Date already blocked' });
     }
     console.error('Create availability error:', error);
@@ -97,21 +93,17 @@ router.post('/', authenticate, async (req, res) => {
 // Delete availability (authenticated)
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const availability = await query('SELECT * FROM availability WHERE id = ?', [req.params.id]);
-    if (availability.length === 0) {
-      return res.status(404).json({ error: 'Availability not found' });
-    }
+    const availability = await query('SELECT * FROM availability WHERE id = $1', [req.params.id]);
+    if (availability.length === 0) return res.status(404).json({ error: 'Availability not found' });
 
     // Verify ownership
-    const properties = await query('SELECT owner_email FROM properties WHERE id = ?', [availability[0].property_id]);
-    if (properties.length === 0) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
+    const properties = await query('SELECT owner_email FROM properties WHERE id = $1', [availability[0].property_id]);
+    if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
     if (properties[0].owner_email !== req.user.email && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    await run('DELETE FROM availability WHERE id = ?', [req.params.id]);
+    await run('DELETE FROM availability WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete availability error:', error);
@@ -120,5 +112,3 @@ router.delete('/:id', authenticate, async (req, res) => {
 });
 
 export default router;
-
-

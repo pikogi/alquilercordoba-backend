@@ -7,8 +7,8 @@ const router = express.Router();
 // Parse JSON fields
 const parseProperty = (prop) => ({
   ...prop,
-  images: prop.images ? JSON.parse(prop.images) : [],
-  amenities: prop.amenities ? JSON.parse(prop.amenities) : [],
+  images: prop.images || [],
+  amenities: prop.amenities || [],
   price_per_night: prop.price_per_night || 0,
   capacity: prop.capacity || 0
 });
@@ -29,13 +29,14 @@ router.get('/filter', async (req, res) => {
   try {
     let sql = 'SELECT * FROM properties WHERE 1=1';
     const params = [];
+    let i = 1;
 
     if (req.query.id) {
-      sql += ' AND id = ?';
+      sql += ` AND id = $${i++}`;
       params.push(req.query.id);
     }
     if (req.query.owner_email) {
-      sql += ' AND owner_email = ?';
+      sql += ` AND owner_email = $${i++}`;
       params.push(req.query.owner_email);
     }
 
@@ -50,10 +51,8 @@ router.get('/filter', async (req, res) => {
 // Get single property
 router.get('/:id', async (req, res) => {
   try {
-    const properties = await query('SELECT * FROM properties WHERE id = ?', [req.params.id]);
-    if (properties.length === 0) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
+    const properties = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
+    if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
     res.json(parseProperty(properties[0]));
   } catch (error) {
     console.error('Get property error:', error);
@@ -72,7 +71,8 @@ router.post('/', authenticate, async (req, res) => {
     const result = await run(
       `INSERT INTO properties 
        (title, description, location, price_per_night, capacity, cover_image, images, amenities, owner_email)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
       [
         title,
         description || null,
@@ -80,14 +80,13 @@ router.post('/', authenticate, async (req, res) => {
         price_per_night || 0,
         capacity || 0,
         cover_image || null,
-        JSON.stringify(images || []),
-        JSON.stringify(amenities || []),
+        images || [],
+        amenities || [],
         owner_email || req.user.email
       ]
     );
 
-    const newProperty = await query('SELECT * FROM properties WHERE id = ?', [result.lastID]);
-    res.status(201).json(parseProperty(newProperty[0]));
+    res.status(201).json(parseProperty(result.rows[0]));
   } catch (error) {
     console.error('Create property error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -97,13 +96,13 @@ router.post('/', authenticate, async (req, res) => {
 // Update property (authenticated)
 router.put('/:id', authenticate, async (req, res) => {
   try {
-    const property = await query('SELECT * FROM properties WHERE id = ?', [req.params.id]);
-    if (property.length === 0) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
+    const properties = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
+    if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
+
+    const property = properties[0];
 
     // Check ownership or admin
-    if (property[0].owner_email !== req.user.email && req.user.role !== 'admin') {
+    if (property.owner_email !== req.user.email && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -114,24 +113,24 @@ router.put('/:id', authenticate, async (req, res) => {
 
     await run(
       `UPDATE properties SET
-       title = COALESCE(?, title),
-       description = COALESCE(?, description),
-       location = COALESCE(?, location),
-       price_per_night = COALESCE(?, price_per_night),
-       capacity = COALESCE(?, capacity),
-       cover_image = COALESCE(?, cover_image),
-       images = COALESCE(?, images),
-       amenities = COALESCE(?, amenities),
-       updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
+         title = COALESCE($1, title),
+         description = COALESCE($2, description),
+         location = COALESCE($3, location),
+         price_per_night = COALESCE($4, price_per_night),
+         capacity = COALESCE($5, capacity),
+         cover_image = COALESCE($6, cover_image),
+         images = COALESCE($7, images),
+         amenities = COALESCE($8, amenities),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $9`,
       [
         title, description, location, price_per_night, capacity,
-        cover_image, JSON.stringify(images), JSON.stringify(amenities),
+        cover_image, images, amenities,
         req.params.id
       ]
     );
 
-    const updated = await query('SELECT * FROM properties WHERE id = ?', [req.params.id]);
+    const updated = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
     res.json(parseProperty(updated[0]));
   } catch (error) {
     console.error('Update property error:', error);
@@ -140,4 +139,3 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 export default router;
-

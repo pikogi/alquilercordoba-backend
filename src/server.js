@@ -9,10 +9,10 @@ import uploadRoutes from './routes/upload.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+dotenv.config();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,7 +22,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5175",
   "https://alquilercordoba.vercel.app",
-  "https://alquilercordoba-git-main-*.vercel.app" // opcional: previews
+  "https://alquilercordoba-git-main-*.vercel.app"
 ];
 
 app.use(cors({
@@ -38,7 +38,7 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Initialize database
-initDatabase();
+await initDatabase();
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -47,12 +47,9 @@ app.use('/api/availability', availabilityRoutes);
 app.use('/api/upload', uploadRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5175'}`);
 });
-
