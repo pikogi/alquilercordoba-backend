@@ -73,3 +73,4 @@ Se crea un usuario administrador por defecto:
 
 - `POST /api/upload` - Subir archivo (requiere autenticación)
 
+

@@ -1,71 +1,40 @@
-import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { authenticate } from '../middleware/auth.js';
-import fs from 'fs';
+import express from "express";
+import multer from "multer";
+import cloudinary from "cloudinary";
+import { authenticate } from "../middleware/auth.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Config Cloudinary
+cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const router = express.Router();
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Multer memory storage (NO archivos en Render)
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
-// Configure multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Upload route
+router.post("/", authenticate, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB (aumentado de 10MB)
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp|jfif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
-    if (extname && mimetype) {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten archivos de imagen (JPG, PNG, GIF, WebP)'));
-    }
-  }
-});
-
-// Upload file (authenticated)
-router.post('/', authenticate, (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'El archivo es demasiado grande. El tamaño máximo es 20MB' });
-        }
-        return res.status(400).json({ error: err.message || 'Error al subir el archivo' });
+    // Subir a Cloudinary desde buffer
+    const result = await cloudinary.v2.uploader.upload_stream(
+      { folder: "alquilercordoba" },
+      (error, uploadResult) => {
+        if (error) return res.status(500).json({ error: "Cloudinary upload error" });
+        res.json({ file_url: uploadResult.secure_url });
       }
-      return res.status(400).json({ error: err.message || 'Error al subir el archivo' });
-    }
-    
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se subió ningún archivo' });
-    }
+    );
 
-    const fileUrl = `/uploads/${req.file.filename}`;
-    const fullUrl = `${req.protocol}://${req.get('host')}${fileUrl}`;
-    
-    res.json({ file_url: fullUrl });
-  });
+    result.end(req.file.buffer);
+
+  } catch (err) {
+    res.status(500).json({ error: "Internal error" });
+  }
 });
 
 export default router;
-
