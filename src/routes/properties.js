@@ -4,11 +4,24 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Parse JSON fields
+// Parse JSON / TEXT[] fields safely
 const parseProperty = (prop) => ({
   ...prop,
-  images: prop.images || [],
-  amenities: prop.amenities || [],
+
+  // -------------------------
+  // Normalize IMAGES
+  // -------------------------
+  images: Array.isArray(prop.images)
+    ? prop.images
+    : (prop.images ? prop.images.split(',').map(i => i.trim()) : []),
+
+  // -------------------------
+  // Normalize AMENITIES
+  // -------------------------
+  amenities: Array.isArray(prop.amenities)
+    ? prop.amenities
+    : (prop.amenities ? prop.amenities.split(',').map(a => a.trim()) : []),
+
   price_per_night: prop.price_per_night || 0,
   capacity: prop.capacity || 0
 });
