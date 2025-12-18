@@ -45,7 +45,19 @@ router.get('/', async (req, res) => {
     const pageSize = Math.min(parseInt(req.query.pageSize, 10) || 9, 50); // límite de seguridad
     const offset = (page - 1) * pageSize;
 
-    const { location, minCapacity } = req.query;
+    // Normalizar filtros para evitar valores tipo "undefined" o "null"
+    const rawLocation = req.query.location;
+    const rawMinCapacity = req.query.minCapacity;
+
+    const location =
+      rawLocation && rawLocation !== 'undefined' && rawLocation !== 'null'
+        ? rawLocation
+        : null;
+
+    const parsedMinCapacity =
+      rawMinCapacity && rawMinCapacity !== 'undefined' && rawMinCapacity !== 'null'
+        ? parseInt(rawMinCapacity, 10)
+        : null;
 
     let baseSql = 'FROM properties WHERE 1=1';
     const params = [];
@@ -56,9 +68,9 @@ router.get('/', async (req, res) => {
       params.push(`%${location}%`);
     }
 
-    if (minCapacity) {
+    if (Number.isFinite(parsedMinCapacity)) {
       baseSql += ` AND capacity >= $${i++}`;
-      params.push(parseInt(minCapacity, 10));
+      params.push(parsedMinCapacity);
     }
 
     // Conteo total
