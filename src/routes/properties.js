@@ -30,13 +30,32 @@ const normalizeArray = (val) => {
 };
 
 // Parse JSON / TEXT[] fields safely
-const parseProperty = (prop) => ({
-  ...prop,
-  images: normalizeArray(prop.images),
-  amenities: normalizeArray(prop.amenities),
-  price_per_night: prop.price_per_night || 0,
-  capacity: prop.capacity || 0
-});
+// Versión pública: filtra campos sensibles (owner_email, created_at, updated_at)
+const parseProperty = (prop, includePrivateFields = false) => {
+  const {
+    owner_email,
+    created_at,
+    updated_at,
+    ...publicFields
+  } = prop;
+  
+  const parsed = {
+    ...publicFields,
+    images: normalizeArray(prop.images),
+    amenities: normalizeArray(prop.amenities),
+    price_per_night: prop.price_per_night || 0,
+    capacity: prop.capacity || 0
+  };
+  
+  // Solo incluir campos privados si se solicita explícitamente (para rutas autenticadas)
+  if (includePrivateFields) {
+    if (owner_email !== undefined) parsed.owner_email = owner_email;
+    if (created_at !== undefined) parsed.created_at = created_at;
+    if (updated_at !== undefined) parsed.updated_at = updated_at;
+  }
+  
+  return parsed;
+};
 
 // List properties with optional pagination and filters
 router.get('/', async (req, res) => {
@@ -84,7 +103,7 @@ router.get('/', async (req, res) => {
     );
 
     res.json({
-      data: dataResult.map(parseProperty),
+      data: dataResult.map(prop => parseProperty(prop, false)), // Público: sin owner_email
       pagination: {
         page,
         pageSize,
@@ -98,7 +117,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Filter properties
+// Filter properties (usado en OwnerDashboard - incluye owner_email porque el usuario filtra por su propio email)
 router.get('/filter', async (req, res) => {
   try {
     let sql = 'SELECT * FROM properties WHERE 1=1';
@@ -115,7 +134,8 @@ router.get('/filter', async (req, res) => {
     }
 
     const properties = await query(sql, params);
-    res.json(properties.map(parseProperty));
+    // Incluir owner_email porque se usa en dashboard del propietario (ya filtrado por su email)
+    res.json(properties.map(prop => parseProperty(prop, true)));
   } catch (error) {
     console.error('Filter properties error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -127,7 +147,7 @@ router.get('/:id', async (req, res) => {
   try {
     const properties = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
     if (properties.length === 0) return res.status(404).json({ error: 'Property not found' });
-    res.json(parseProperty(properties[0]));
+    res.json(parseProperty(properties[0], false)); // Público: sin owner_email
   } catch (error) {
     console.error('Get property error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -160,7 +180,7 @@ router.post('/', authenticate, async (req, res) => {
       ]
     );
 
-    res.status(201).json(parseProperty(result.rows[0]));
+    res.status(201).json(parseProperty(result.rows[0], true)); // Autenticado: incluir owner_email
   } catch (error) {
     console.error('Create property error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -204,7 +224,7 @@ router.put('/:id', authenticate, async (req, res) => {
     );
 
     const updated = await query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
-    res.json(parseProperty(updated[0]));
+    res.json(parseProperty(updated[0], true)); // Autenticado: incluir owner_email
   } catch (error) {
     console.error('Update property error:', error);
     res.status(500).json({ error: 'Internal server error' });
