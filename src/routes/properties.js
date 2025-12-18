@@ -38,11 +38,48 @@ const parseProperty = (prop) => ({
   capacity: prop.capacity || 0
 });
 
-// List all properties
+// List properties with optional pagination and filters
 router.get('/', async (req, res) => {
   try {
-    const properties = await query('SELECT * FROM properties ORDER BY created_at DESC');
-    res.json(properties.map(parseProperty));
+    const page = parseInt(req.query.page, 10) || 1;
+    const pageSize = Math.min(parseInt(req.query.pageSize, 10) || 9, 50); // límite de seguridad
+    const offset = (page - 1) * pageSize;
+
+    const { location, minCapacity } = req.query;
+
+    let baseSql = 'FROM properties WHERE 1=1';
+    const params = [];
+    let i = 1;
+
+    if (location) {
+      baseSql += ` AND LOWER(location) LIKE LOWER($${i++})`;
+      params.push(`%${location}%`);
+    }
+
+    if (minCapacity) {
+      baseSql += ` AND capacity >= $${i++}`;
+      params.push(parseInt(minCapacity, 10));
+    }
+
+    // Conteo total
+    const countResult = await query(`SELECT COUNT(*) as count ${baseSql}`, params);
+    const total = parseInt(countResult[0].count, 10);
+
+    // Datos paginados
+    const dataResult = await query(
+      `SELECT * ${baseSql} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+      [...params, pageSize, offset]
+    );
+
+    res.json({
+      data: dataResult.map(parseProperty),
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize) || 1,
+      },
+    });
   } catch (error) {
     console.error('List properties error:', error);
     res.status(500).json({ error: 'Internal server error' });

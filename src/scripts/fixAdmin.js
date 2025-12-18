@@ -8,8 +8,8 @@ const fixAdmin = async () => {
   console.log('Corrigiendo contraseña del usuario admin...');
   
   try {
-    // Generar hash correcto para "admin123"
-    const correctHash = await bcrypt.hash('admin123', 10);
+    // Generar hash correcto para "Admin4349!"
+    const correctHash = await bcrypt.hash('Admin4349!', 10);
     
     // Verificar si el usuario existe
     const users = await query('SELECT * FROM users WHERE email = ?', ['admin@example.com']);
@@ -32,7 +32,7 @@ const fixAdmin = async () => {
     
     console.log('\n✅ Usuario admin corregido!');
     console.log('Email: admin@example.com');
-    console.log('Password: admin123');
+    console.log('Password: Admin4349!');
     
   } catch (error) {
     console.error('Error:', error);
@@ -42,5 +42,6 @@ const fixAdmin = async () => {
 };
 
 fixAdmin();
+
 
 

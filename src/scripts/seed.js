@@ -134,10 +134,7 @@ const seedData = async () => {
     }
 
     console.log('\n✅ Datos de ejemplo cargados exitosamente!');
-    console.log('\nUsuarios disponibles:');
-    console.log('  - Admin: admin@example.com / admin123');
-    console.log('  - Propietario: propietario@example.com / password123');
-    console.log('\nPuedes iniciar sesión y ver las propiedades en el panel.');
+    console.log('\nUsuarios configurados correctamente. Puedes iniciar sesión y ver las propiedades en el panel.');
 
   } catch (error) {
     console.error('Error cargando datos:', error);

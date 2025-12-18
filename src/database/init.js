@@ -63,12 +63,12 @@ export const initDatabase = async () => {
   // Solo crear admin si no hay usuarios
   const users = await query('SELECT COUNT(*) as count FROM users');
   if (parseInt(users[0].count) === 0) {
-    const hashed = await bcrypt.hash('admin123', 10);
+    const hashed = await bcrypt.hash('Admin4349!', 10);
     await run(`
       INSERT INTO users (email, password, first_name, role)
       VALUES ('admin@example.com', $1, 'Admin', 'admin');
     `, [hashed]);
-    console.log('Admin user created: admin@example.com / admin123');
+    console.log('Admin user created: admin@example.com / Admin4349!');
   }
 
   console.log('PostgreSQL database initialized safely');
